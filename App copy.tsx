@@ -21,7 +21,6 @@ import {
 } from 'react-native';
 import { BleManager } from 'react-native-ble-plx';
 import RNBluetoothClassic from 'react-native-bluetooth-classic';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Initialize BLE Manager
 const bleManager = new BleManager();
@@ -92,8 +91,6 @@ const Icon: React.FC<IconProps> = ({ name, size = 24, color = '#fff' }) => {
     edit: '✎',
     radio: '📡',
     alert: '⚠️',
-    lock: '🔒',
-    mail: '✉️',
   };
 
   return (
@@ -101,43 +98,7 @@ const Icon: React.FC<IconProps> = ({ name, size = 24, color = '#fff' }) => {
   );
 };
 
-// AUTH CONTEXT - Minimal implementation
-const AUTH_KEY = '@shudhvayu_auth';
-
-const checkAuth = async () => {
-  try {
-    const user = await AsyncStorage.getItem(AUTH_KEY);
-    return user ? JSON.parse(user) : null;
-  } catch (error) {
-    return null;
-  }
-};
-
-const saveAuth = async (user: any) => {
-  try {
-    await AsyncStorage.setItem(AUTH_KEY, JSON.stringify(user));
-  } catch (error) {
-    console.log('Save auth error:', error);
-  }
-};
-
-const clearAuth = async () => {
-  try {
-    await AsyncStorage.removeItem(AUTH_KEY);
-  } catch (error) {
-    console.log('Clear auth error:', error);
-  }
-};
-
-// MAIN APP COMPONENT
 export default function App() {
-  // Auth state
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [showAuthScreen, setShowAuthScreen] = useState<'login' | 'signup'>('login');
-
-  // App state
   const [activeTab, setActiveTab] = useState<string>('live');
   const [menuOpen, setMenuOpen] = useState<boolean>(false);
   const [btStatus, setBtStatus] = useState<'connected' | 'connecting' | 'disconnected'>('disconnected');
@@ -150,107 +111,17 @@ export default function App() {
   const [scanning, setScanning] = useState<boolean>(false);
   const [connectedDevice, setConnectedDevice] = useState<any>(null);
   const [lastDataTime, setLastDataTime] = useState<Date | null>(null);
-  
-  // NEW: Task 4 - MAC ID Display
-  const [connectedDeviceMAC, setConnectedDeviceMAC] = useState<string | null>(null);
-  const [connectedDeviceName, setConnectedDeviceName] = useState<string | null>(null);
-  
-  // NEW: Task 3 - Signal Strength
-  const [signalStrength, setSignalStrength] = useState<number>(0); // 0-4 bars
-  const [rssi, setRSSI] = useState<number>(-100);
 
   const scrollViewRef = useRef<ScrollView>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const bleSubscription = useRef<any>(null);
   const classicReadInterval = useRef<any>(null);
   const dataCheckInterval = useRef<any>(null);
-  const signalCheckInterval = useRef<any>(null);
   const connectedDeviceType = useRef<'BLE' | 'Classic' | null>(null);
-
-  // Auth form states
-  const [authEmail, setAuthEmail] = useState('');
-  const [authPassword, setAuthPassword] = useState('');
-  const [authName, setAuthName] = useState('');
-  const [authLoading, setAuthLoading] = useState(false);
-  const fadeAuthAnim = useRef(new Animated.Value(0)).current;
-
-  // Check authentication on mount
-  useEffect(() => {
-    checkAuthStatus();
-  }, []);
-
-  const checkAuthStatus = async () => {
-    const user = await checkAuth();
-    if (user) {
-      setCurrentUser(user);
-      setIsAuthenticated(true);
-    }
-    setIsLoading(false);
-  };
-
-  // Auth handlers
-  const handleLogin = async () => {
-    if (!authEmail || !authPassword) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
-    }
-
-    setAuthLoading(true);
-    
-    // Simulate API call - Replace with your actual API
-    setTimeout(async () => {
-      // For demo: accept any email/password
-      const user = { email: authEmail, name: authEmail.split('@')[0] };
-      await saveAuth(user);
-      setCurrentUser(user);
-      setIsAuthenticated(true);
-      setAuthLoading(false);
-      
-      // Reset form
-      setAuthEmail('');
-      setAuthPassword('');
-    }, 1000);
-  };
-
-  const handleSignup = async () => {
-    if (!authEmail || !authPassword || !authName) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
-    }
-
-    setAuthLoading(true);
-    
-    // Simulate API call - Replace with your actual API
-    setTimeout(async () => {
-      const user = { email: authEmail, name: authName };
-      await saveAuth(user);
-      setCurrentUser(user);
-      setIsAuthenticated(true);
-      setAuthLoading(false);
-      
-      // Reset form
-      setAuthEmail('');
-      setAuthPassword('');
-      setAuthName('');
-    }, 1000);
-  };
-
-  const handleLogout = async () => {
-    await clearAuth();
-    setIsAuthenticated(false);
-    setCurrentUser(null);
-    
-    // Disconnect device on logout
-    if (connectedDevice) {
-      await disconnectDevice();
-    }
-  };
 
   // Request permissions
   useEffect(() => {
-    if (isAuthenticated) {
-      requestPermissions();
-    }
+    requestPermissions();
     return () => {
       if (bleSubscription.current) {
         bleSubscription.current.remove();
@@ -261,12 +132,9 @@ export default function App() {
       if (dataCheckInterval.current) {
         clearInterval(dataCheckInterval.current);
       }
-      if (signalCheckInterval.current) {
-        clearInterval(signalCheckInterval.current);
-      }
       bleManager.destroy();
     };
-  }, [isAuthenticated]);
+  }, []);
 
   const requestPermissions = async () => {
     if (Platform.OS === 'android') {
@@ -341,31 +209,6 @@ export default function App() {
     };
   }, [btStatus, lastDataTime]);
 
-  // NEW: Task 3 - Monitor signal strength for BLE
-  const monitorSignalStrength = (device: any) => {
-    if (signalCheckInterval.current) {
-      clearInterval(signalCheckInterval.current);
-    }
-    
-    signalCheckInterval.current = setInterval(async () => {
-      try {
-        const rssiValue = await device.readRSSI();
-        setRSSI(rssiValue);
-        
-        // Convert RSSI to signal bars (0-4)
-        let bars = 0;
-        if (rssiValue > -60) bars = 4;
-        else if (rssiValue > -70) bars = 3;
-        else if (rssiValue > -80) bars = 2;
-        else if (rssiValue > -90) bars = 1;
-        
-        setSignalStrength(bars);
-      } catch (error) {
-        console.log('RSSI read error:', error);
-      }
-    }, 5000); // Check every 5 seconds
-  };
-
   const scanForDevices = async () => {
     setScanning(true);
     setDevices([]);
@@ -417,10 +260,6 @@ export default function App() {
       setBtStatus('connecting');
       bleManager.stopDeviceScan();
 
-      // NEW: Task 4 - Store MAC and Name
-      setConnectedDeviceMAC(deviceInfo.id);
-      setConnectedDeviceName(deviceInfo.name);
-
       if (deviceInfo.type === 'BLE') {
         // Connect to BLE device
         const device = await bleManager.connectToDevice(deviceInfo.rawDevice.id);
@@ -431,9 +270,6 @@ export default function App() {
         setBtStatus('connected');
         setDeviceModalVisible(false);
         setLastDataTime(new Date());
-
-        // NEW: Task 3 - Start monitoring signal strength
-        monitorSignalStrength(device);
 
         bleSubscription.current = device.monitorCharacteristicForService(
           SERVICE_UUID,
@@ -481,8 +317,6 @@ export default function App() {
     } catch (error: any) {
       console.error('Connection error:', error);
       setBtStatus('disconnected');
-      setConnectedDeviceMAC(null);
-      setConnectedDeviceName(null);
       Alert.alert('Connection Failed', error.message);
     }
   };
@@ -502,10 +336,6 @@ export default function App() {
           clearInterval(dataCheckInterval.current);
           dataCheckInterval.current = null;
         }
-        if (signalCheckInterval.current) {
-          clearInterval(signalCheckInterval.current);
-          signalCheckInterval.current = null;
-        }
 
         if (connectedDeviceType.current === 'BLE') {
           await connectedDevice.cancelConnection();
@@ -517,10 +347,6 @@ export default function App() {
         connectedDeviceType.current = null;
         setBtStatus('disconnected');
         setLastDataTime(null);
-        setConnectedDeviceMAC(null);
-        setConnectedDeviceName(null);
-        setSignalStrength(0);
-        setRSSI(-100);
         Alert.alert('Disconnected', 'Device disconnected successfully');
       } catch (error) {
         console.error('Disconnect error:', error);
@@ -528,68 +354,14 @@ export default function App() {
     }
   };
 
-  const parseData = async (rawData: string) => {
+  const parseData = (rawData: string) => {
     const match = rawData.match(/PM2\.5\(ATM\):\s*([\d.]+)\s*ug\/m3/);
     if (match) {
       const val = parseFloat(match[1]);
-      const timestamp = new Date();
-      
-      // NEW: Task 2 - Save to persistent storage
-      await saveReadingToStorage({
-        timestamp,
-        pm25: val,
-        deviceMAC: connectedDeviceMAC || 'unknown',
-        deviceName: connectedDeviceName || 'unknown'
-      });
-      
       setReadings((prev) => {
-        const next = [...prev, { ts: timestamp, value: val }];
+        const next = [...prev, { ts: new Date(), value: val }];
         return next.length > 500 ? next.slice(-500) : next;
       });
-    }
-  };
-
-  // NEW: Task 2 - Storage functions
-  const saveReadingToStorage = async (data: any) => {
-    try {
-      const key = `@reading_${data.timestamp.getTime()}`;
-      await AsyncStorage.setItem(key, JSON.stringify(data));
-    } catch (error) {
-      console.log('Save reading error:', error);
-    }
-  };
-
-  const loadStoredReadings = async (filters: any = {}) => {
-    try {
-      const keys = await AsyncStorage.getAllKeys();
-      const readingKeys = keys.filter(k => k.startsWith('@reading_'));
-      const items = await AsyncStorage.multiGet(readingKeys);
-      
-      let loadedReadings = items
-        .map(([key, value]) => value ? JSON.parse(value) : null)
-        .filter(Boolean)
-        .map((r: any) => ({
-          ts: new Date(r.timestamp),
-          value: r.pm25,
-          deviceMAC: r.deviceMAC,
-          deviceName: r.deviceName
-        }));
-
-      // Apply filters
-      if (filters.startDate) {
-        loadedReadings = loadedReadings.filter((r: any) => r.ts >= filters.startDate);
-      }
-      if (filters.endDate) {
-        loadedReadings = loadedReadings.filter((r: any) => r.ts <= filters.endDate);
-      }
-      if (filters.deviceMAC) {
-        loadedReadings = loadedReadings.filter((r: any) => r.deviceMAC === filters.deviceMAC);
-      }
-
-      return loadedReadings;
-    } catch (error) {
-      console.log('Load readings error:', error);
-      return [];
     }
   };
 
@@ -621,14 +393,8 @@ export default function App() {
     liveText: btStatus === 'connected' ? 'Receiving' : btStatus === 'connecting' ? 'Connecting...' : 'Idle',
   };
 
-  const applyFilter = async () => {
-    const filters: any = {};
-    if (startDate) filters.startDate = new Date(startDate + 'T00:00:00');
-    if (endDate) filters.endDate = new Date(endDate + 'T23:59:59');
-    if (connectedDeviceMAC) filters.deviceMAC = connectedDeviceMAC;
-    
-    const stored = await loadStoredReadings(filters);
-    setFiltered(stored as Reading[]);
+  const applyFilter = () => {
+    setFiltered(filterReadings(readings, startDate || null, endDate || null));
   };
 
   const clearFilter = () => {
@@ -637,183 +403,6 @@ export default function App() {
     setFiltered(filterReadings(readings, null, null));
   };
 
-  // NEW: Signal Indicator Component
-  const SignalIndicator = ({ strength }: { strength: number }) => {
-    const bars = [1, 2, 3, 4];
-    
-    return (
-      <View style={styles.signalContainer}>
-        {bars.map((bar) => (
-          <View
-            key={bar}
-            style={[
-              styles.signalBar,
-              { height: bar * 3 + 4 },
-              bar <= strength ? styles.signalBarActive : styles.signalBarInactive
-            ]}
-          />
-        ))}
-      </View>
-    );
-  };
-
-  // Auth fade animation
-  useEffect(() => {
-    if (!isAuthenticated && !isLoading) {
-      Animated.timing(fadeAuthAnim, {
-        toValue: 1,
-        duration: 600,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [isAuthenticated, isLoading]);
-
-  // Loading screen
-  if (isLoading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="#18181b" />
-        <View style={styles.loadingContainer}>
-          <Text style={styles.logoText}>Shudhvayu</Text>
-          <Text style={styles.loadingText}>Loading...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // AUTH SCREENS
-  if (!isAuthenticated) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="#18181b" />
-        <Animated.View style={[styles.authContainer, { opacity: fadeAuthAnim }]}>
-          <View style={styles.authHeader}>
-            <Text style={styles.logoText}>Shudhvayu</Text>
-            <Text style={styles.tagline}>Clean Air, Better Life</Text>
-          </View>
-
-          <View style={styles.authCard}>
-            {showAuthScreen === 'login' ? (
-              // LOGIN FORM
-              <>
-                <Text style={styles.authTitle}>Welcome Back</Text>
-                <Text style={styles.authSubtitle}>Sign in to continue</Text>
-
-                <View style={styles.inputGroup}>
-                  <View style={styles.inputWrapper}>
-                    <Icon name="mail" size={20} color="#a1a1aa" />
-                    <TextInput
-                      style={styles.authInput}
-                      placeholder="Email"
-                      placeholderTextColor="#71717a"
-                      value={authEmail}
-                      onChangeText={setAuthEmail}
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                    />
-                  </View>
-
-                  <View style={styles.inputWrapper}>
-                    <Icon name="lock" size={20} color="#a1a1aa" />
-                    <TextInput
-                      style={styles.authInput}
-                      placeholder="Password"
-                      placeholderTextColor="#71717a"
-                      value={authPassword}
-                      onChangeText={setAuthPassword}
-                      secureTextEntry
-                    />
-                  </View>
-                </View>
-
-                <TouchableOpacity
-                  style={styles.authButton}
-                  onPress={handleLogin}
-                  disabled={authLoading}
-                >
-                  <Text style={styles.authButtonText}>
-                    {authLoading ? 'Signing in...' : 'Sign In'}
-                  </Text>
-                </TouchableOpacity>
-
-                <View style={styles.authFooter}>
-                  <Text style={styles.authFooterText}>Don't have an account? </Text>
-                  <TouchableOpacity onPress={() => setShowAuthScreen('signup')}>
-                    <Text style={styles.authLink}>Sign Up</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            ) : (
-              // SIGNUP FORM
-              <>
-                <Text style={styles.authTitle}>Create Account</Text>
-                <Text style={styles.authSubtitle}>Join Shudhvayu today</Text>
-
-                <View style={styles.inputGroup}>
-                  <View style={styles.inputWrapper}>
-                    <Icon name="user" size={20} color="#a1a1aa" />
-                    <TextInput
-                      style={styles.authInput}
-                      placeholder="Full Name"
-                      placeholderTextColor="#71717a"
-                      value={authName}
-                      onChangeText={setAuthName}
-                    />
-                  </View>
-
-                  <View style={styles.inputWrapper}>
-                    <Icon name="mail" size={20} color="#a1a1aa" />
-                    <TextInput
-                      style={styles.authInput}
-                      placeholder="Email"
-                      placeholderTextColor="#71717a"
-                      value={authEmail}
-                      onChangeText={setAuthEmail}
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                    />
-                  </View>
-
-                  <View style={styles.inputWrapper}>
-                    <Icon name="lock" size={20} color="#a1a1aa" />
-                    <TextInput
-                      style={styles.authInput}
-                      placeholder="Password"
-                      placeholderTextColor="#71717a"
-                      value={authPassword}
-                      onChangeText={setAuthPassword}
-                      secureTextEntry
-                    />
-                  </View>
-                </View>
-
-                <TouchableOpacity
-                  style={styles.authButton}
-                  onPress={handleSignup}
-                  disabled={authLoading}
-                >
-                  <Text style={styles.authButtonText}>
-                    {authLoading ? 'Creating account...' : 'Sign Up'}
-                  </Text>
-                </TouchableOpacity>
-
-                <View style={styles.authFooter}>
-                  <Text style={styles.authFooterText}>Already have an account? </Text>
-                  <TouchableOpacity onPress={() => setShowAuthScreen('login')}>
-                    <Text style={styles.authLink}>Sign In</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </View>
-
-          <Text style={styles.authVersion}>Version 1.0.0</Text>
-        </Animated.View>
-      </SafeAreaView>
-    );
-  }
-
-  // MAIN APP (After Authentication)
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#18181b" />
@@ -831,27 +420,12 @@ export default function App() {
         <TouchableOpacity onPress={openDeviceModal} style={styles.btButton}>
           <View style={[styles.btCircle, { backgroundColor: isConnected ? '#27272a' : '#3f3f46' }]}>
             <Icon name="bluetooth" size={20} color={btStatus === 'connected' ? '#3b82f6' : '#a1a1aa'} />
-            {/* NEW: Task 3 - Signal Indicator */}
-            {btStatus === 'connected' && connectedDeviceType.current === 'BLE' && (
-              <View style={styles.signalOverlay}>
-                <SignalIndicator strength={signalStrength} />
-              </View>
-            )}
           </View>
           <View style={[styles.btBadge, { backgroundColor: btBadge.color }]}>
             <Text style={styles.btBadgeText}>{btBadge.text}</Text>
           </View>
         </TouchableOpacity>
       </View>
-
-      {/* NEW: Task 4 - MAC ID Display in Header */}
-      {connectedDeviceMAC && (
-        <View style={styles.macHeader}>
-          <Text style={styles.macLabel}>Device:</Text>
-          <Text style={styles.macName}>{connectedDeviceName}</Text>
-          <Text style={styles.macAddress}>MAC: {connectedDeviceMAC}</Text>
-        </View>
-      )}
 
       {/* Tab Selector */}
       <View style={styles.tabContainer}>
@@ -885,7 +459,7 @@ export default function App() {
           <View style={styles.menu}>
             <View style={styles.menuHeader}>
               <View>
-                <Text style={styles.menuTitle}>Hi, {currentUser?.name || 'Partner'}</Text>
+                <Text style={styles.menuTitle}>Hi, Partner</Text>
                 <Text style={styles.menuSubtitle}>Shudhvayu</Text>
               </View>
               <TouchableOpacity onPress={() => setMenuOpen(false)}>
@@ -934,7 +508,7 @@ export default function App() {
                 <Text style={styles.menuItemText}>Terms of Services</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={[styles.menuItem, styles.logoutItem]} onPress={handleLogout}>
+              <TouchableOpacity style={[styles.menuItem, styles.logoutItem]}>
                 <Icon name="logout" size={20} color="#f87171" />
                 <Text style={styles.logoutText}>Logout</Text>
               </TouchableOpacity>
@@ -1024,34 +598,6 @@ export default function App() {
                 </View>
               </View>
             </View>
-
-            {/* NEW: Task 4 - Device Info Panel */}
-            {btStatus === 'connected' && connectedDeviceMAC && (
-              <View style={styles.deviceInfoPanel}>
-                <Text style={styles.deviceInfoTitle}>📱 Connected Device</Text>
-                <View style={styles.deviceInfoRow}>
-                  <Text style={styles.deviceInfoLabel}>Name:</Text>
-                  <Text style={styles.deviceInfoValue}>{connectedDeviceName}</Text>
-                </View>
-                <View style={styles.deviceInfoRow}>
-                  <Text style={styles.deviceInfoLabel}>MAC Address:</Text>
-                  <Text style={styles.deviceInfoValue}>{connectedDeviceMAC}</Text>
-                </View>
-                <View style={styles.deviceInfoRow}>
-                  <Text style={styles.deviceInfoLabel}>Type:</Text>
-                  <Text style={styles.deviceInfoValue}>{connectedDeviceType.current}</Text>
-                </View>
-                {connectedDeviceType.current === 'BLE' && (
-                  <View style={styles.deviceInfoRow}>
-                    <Text style={styles.deviceInfoLabel}>Signal:</Text>
-                    <View style={styles.deviceInfoSignal}>
-                      <SignalIndicator strength={signalStrength} />
-                      <Text style={styles.rssiText}>{rssi} dBm</Text>
-                    </View>
-                  </View>
-                )}
-              </View>
-            )}
 
             {/* Live Feed Table */}
             <View style={styles.tableContainer}>
@@ -1190,24 +736,32 @@ export default function App() {
                   <Icon name="user" size={40} color="#fff" />
                 </View>
                 <View>
-                  <Text style={styles.profileName}>{currentUser?.name || 'Partner'}</Text>
-                  <Text style={styles.profileSubtitle}>Shudhvayu User</Text>
+                  <Text style={styles.profileName}>Partner Account</Text>
+                  <Text style={styles.profileSubtitle}>Shudhvayu Partner</Text>
                 </View>
               </View>
 
               <View style={styles.profileDetails}>
                 <View style={styles.profileRow}>
+                  <Text style={styles.profileLabel}>User Name</Text>
+                  <Text style={styles.profileValue}>Partner</Text>
+                </View>
+                <View style={styles.profileRow}>
+                  <Text style={styles.profileLabel}>Organization Name</Text>
+                  <Text style={styles.profileValue}>Shudhvayu</Text>
+                </View>
+                <View style={styles.profileRow}>
                   <Text style={styles.profileLabel}>Email</Text>
-                  <Text style={styles.profileValue}>{currentUser?.email || 'N/A'}</Text>
+                  <Text style={styles.profileValue}>partner@shudhvayu.app</Text>
                 </View>
                 <View style={[styles.profileRow, styles.profileRowLast]}>
-                  <Text style={styles.profileLabel}>Member Since</Text>
-                  <Text style={styles.profileValue}>{fmtDate(new Date())}</Text>
+                  <Text style={styles.profileLabel}>Password</Text>
+                  <Text style={styles.profileValue}>••••••••</Text>
                 </View>
               </View>
             </View>
 
-            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+            <TouchableOpacity style={styles.logoutButton}>
               <Icon name="logout" size={20} color="#f87171" />
               <Text style={styles.logoutButtonText}>Logout</Text>
             </TouchableOpacity>
@@ -1233,110 +787,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#18181b',
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  logoText: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 8,
-  },
-  loadingText: {
-    fontSize: 14,
-    color: '#a1a1aa',
-  },
-  // Auth Styles
-  authContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  authHeader: {
-    alignItems: 'center',
-    marginBottom: 48,
-  },
-  tagline: {
-    fontSize: 14,
-    color: '#a1a1aa',
-    marginTop: 8,
-  },
-  authCard: {
-    width: '100%',
-    maxWidth: 400,
-    backgroundColor: '#27272a',
-    borderRadius: 16,
-    padding: 32,
-    borderWidth: 1,
-    borderColor: '#3f3f46',
-  },
-  authTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 8,
-  },
-  authSubtitle: {
-    fontSize: 14,
-    color: '#a1a1aa',
-    marginBottom: 24,
-  },
-  inputGroup: {
-    gap: 16,
-    marginBottom: 24,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#18181b',
-    borderWidth: 1,
-    borderColor: '#3f3f46',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    height: 48,
-  },
-  authInput: {
-    flex: 1,
-    color: '#fff',
-    fontSize: 16,
-    marginLeft: 12,
-  },
-  authButton: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    height: 48,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  authButtonText: {
-    color: '#18181b',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  authFooter: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  authFooterText: {
-    color: '#a1a1aa',
-    fontSize: 14,
-  },
-  authLink: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  authVersion: {
-    marginTop: 32,
-    color: '#71717a',
-    fontSize: 12,
-  },
-  // Main App Styles
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1376,51 +826,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#fff',
     fontWeight: '600',
-  },
-  signalOverlay: {
-    position: 'absolute',
-    top: -8,
-    right: -8,
-  },
-  signalContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 2,
-  },
-  signalBar: {
-    width: 3,
-    borderRadius: 1.5,
-  },
-  signalBarActive: {
-    backgroundColor: '#22c55e',
-  },
-  signalBarInactive: {
-    backgroundColor: '#3f3f46',
-  },
-  macHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: '#27272a',
-    borderBottomWidth: 1,
-    borderBottomColor: '#3f3f46',
-  },
-  macLabel: {
-    fontSize: 12,
-    color: '#a1a1aa',
-    marginRight: 8,
-  },
-  macName: {
-    fontSize: 12,
-    color: '#fff',
-    fontWeight: '600',
-    marginRight: 12,
-  },
-  macAddress: {
-    fontSize: 11,
-    color: '#3b82f6',
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
   tabContainer: {
     alignItems: 'center',
@@ -1525,45 +930,6 @@ const styles = StyleSheet.create({
   },
   pageContainer: {
     padding: 16,
-  },
-  deviceInfoPanel: {
-    backgroundColor: '#27272a',
-    borderWidth: 1,
-    borderColor: '#3f3f46',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 12,
-  },
-  deviceInfoTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: 12,
-  },
-  deviceInfoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  deviceInfoLabel: {
-    fontSize: 13,
-    color: '#a1a1aa',
-  },
-  deviceInfoValue: {
-    fontSize: 13,
-    color: '#fff',
-    fontWeight: '500',
-  },
-  deviceInfoSignal: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  rssiText: {
-    fontSize: 11,
-    color: '#a1a1aa',
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
   liveHeaderContainer: {
     marginBottom: 12,
@@ -1971,3 +1337,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
